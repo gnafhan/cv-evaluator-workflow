@@ -1,98 +1,370 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# AI-Powered CV & Project Evaluation System
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+A backend service that automates initial screening of job applications by evaluating candidate CVs and project reports against job descriptions and case study briefs using AI-powered analysis with RAG (Retrieval-Augmented Generation).
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Features
 
-## Description
+- **Document Upload**: Upload CV and project report PDFs
+- **Asynchronous Evaluation**: Queue-based processing with progress tracking
+- **Multi-Stage AI Pipeline**: 
+  - CV parsing and evaluation
+  - Project report evaluation
+  - Final synthesis
+- **RAG Integration**: Semantic search using Pinecone for context retrieval
+- **Progress Tracking**: Real-time job status and progress updates
+- **Error Handling**: Robust retry logic with exponential backoff
+- **Security Screening**: Google Cloud Model Armor integration to screen PDFs and prompts for malicious content, prompt injection, and sensitive data
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Technology Stack
 
-## Project setup
+- **Backend Framework**: NestJS with TypeScript
+- **Database**: MongoDB (document storage, evaluation results, job tracking)
+- **Queue/Job Management**: Redis + BullMQ
+- **AI Framework**: Vercel AI SDK
+- **LLM Provider**: Google Generative AI (Gemini 1.5 Pro/Flash)
+- **Vector Database**: Pinecone (RAG/semantic search)
+- **PDF Processing**: Mistral AI OCR (Document AI)
+- **File Storage**: Local filesystem
 
+## Prerequisites
+
+- Node.js 18+ and npm
+- Docker and Docker Compose (for MongoDB and Redis)
+- MongoDB (via Docker or standalone)
+- Redis (via Docker or standalone)
+- Pinecone account and API key
+- Google Generative AI API key
+- Mistral AI API key (for OCR processing)
+
+## Installation
+
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd cv-corrector
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Set up environment variables**
+   ```bash
+   cp .env.example .env
+   ```
+   
+   Edit `.env` and fill in your credentials:
+   - `MONGODB_URI`: MongoDB connection string
+   - `REDIS_HOST` and `REDIS_PORT`: Redis connection details
+   - `PINECONE_API_KEY`: Your Pinecone API key
+   - `GOOGLE_GENERATIVE_AI_API_KEY`: Your Google AI API key
+   - `MISTRAL_API_KEY`: Your Mistral AI API key (for OCR processing)
+   - `MISTRAL_OCR_MODEL`: Mistral OCR model (default: `mistral-ocr-latest`)
+   - `MODEL_ARMOR_ENABLED`: Enable Model Armor security screening (default: `false`)
+   - `GCP_PROJECT_ID`: Your Google Cloud Project ID (required if Model Armor is enabled)
+   - `MODEL_ARMOR_LOCATION`: Model Armor location (default: `asia-southeast1`)
+   - `MODEL_ARMOR_TEMPLATE_ID`: Optional template ID (if not provided, a default template will be created automatically)
+
+5. **Configure GCP Service Account Permissions** (Required for Model Armor):
+   
+   Your service account needs the following IAM roles/permissions:
+   
+   **Minimum Required Permissions:**
+   - `modelarmor.templates.use` - To use templates for sanitization
+   - `modelarmor.templates.get` - To verify/get template details (optional, for verification only)
+   - `modelarmor.templates.create` - Only if you want to auto-create templates (optional)
+   
+   **Recommended IAM Roles:**
+   - **Security Command Center Admin** (`roles/securitycenter.admin`) - Full access to Model Armor
+   - **OR** **Model Armor User** (`roles/modelarmor.user`) - If available in your GCP project
+   
+   **To Grant Permissions:**
+   1. Go to GCP Console → IAM & Admin → IAM
+   2. Find your service account (or create one)
+   3. Click "Edit" → "Add Another Role"
+   4. Add one of the roles above
+   5. Save
+   
+   **Service Account Authentication:**
+   - Set `GOOGLE_APPLICATION_CREDENTIALS` environment variable to path of service account JSON key file
+   - OR use Application Default Credentials if running on GCP (Cloud Run, GCE, etc.)
+   
+   Example:
+   ```bash
+   export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account-key.json
+   ```
+   
+   - Other configuration values as needed
+
+4. **Start Docker services**
 ```bash
-$ npm install
+   docker-compose up -d
+   ```
+   
+   This starts MongoDB and Redis containers.
+
+5. **Ingest system documents**
+   ```bash
+   npm run ingest:documents
+   ```
+   
+   This loads job descriptions, scoring rubrics, and case study briefs into Pinecone.
+
+6. **Start the application**
+```bash
+   # Development mode
+   npm run start:dev
+   
+   # Production mode
+   npm run build
+   npm run start:prod
+   ```
+
+The application will be available at `http://localhost:3000`.
+
+## API Endpoints
+
+### POST /upload
+
+Upload candidate CV and project report.
+
+**Request**: `multipart/form-data`
+- `cv`: CV PDF file
+- `project_report`: Project report PDF file
+
+**Response** (201 Created):
+```json
+{
+  "cv_id": "doc_cv_1234567890",
+  "project_report_id": "doc_pr_1234567890",
+  "uploaded_at": "2024-01-15T10:30:00Z"
+}
 ```
 
-## Compile and run the project
+### POST /evaluate
 
-```bash
-# development
-$ npm run start
+Trigger asynchronous evaluation pipeline.
 
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+**Request**:
+```json
+{
+  "job_title": "Backend Developer",
+  "cv_id": "doc_cv_1234567890",
+  "project_report_id": "doc_pr_1234567890"
+}
 ```
 
-## Run tests
+**Response** (202 Accepted):
+```json
+{
+  "id": "eval_job_9876543210",
+  "status": "queued",
+  "created_at": "2024-01-15T10:31:00Z"
+}
+```
+
+### GET /result/:id
+
+Retrieve evaluation status and results.
+
+**Response - Processing** (200 OK):
+```json
+{
+  "id": "eval_job_9876543210",
+  "status": "processing",
+  "current_stage": "cv_evaluation",
+  "progress_percentage": 30,
+  "created_at": "2024-01-15T10:31:00Z",
+  "started_at": "2024-01-15T10:31:05Z"
+}
+```
+
+**Response - Completed** (200 OK):
+```json
+{
+  "id": "eval_job_9876543210",
+  "status": "completed",
+  "result": {
+    "cv_match_rate": 0.82,
+    "cv_feedback": "Strong in backend and cloud technologies...",
+    "cv_scoring_breakdown": {
+      "technical_skills_match": {
+        "score": 4,
+        "weight": 0.4,
+        "weighted_score": 1.6
+      },
+      ...
+    },
+    "project_score": 4.5,
+    "project_feedback": "Excellent implementation...",
+    "project_scoring_breakdown": {
+      "correctness": {
+        "score": 5,
+        "weight": 0.3,
+        "weighted_score": 1.5
+      },
+      ...
+    },
+    "overall_summary": "Strong candidate with solid backend engineering..."
+  },
+  "completed_at": "2024-01-15T10:35:00Z",
+  "processing_time_seconds": 235
+}
+```
+
+### GET /health
+
+Health check endpoint.
+
+**Response**:
+```json
+{
+  "status": "ok",
+  "timestamp": "2024-01-15T10:30:00Z",
+  "services": {
+    "mongodb": "connected"
+  }
+}
+```
+
+## Architecture
+
+### Module Structure
+
+```
+src/
+├── config/              # Configuration management
+├── database/            # MongoDB schemas and connection
+├── documents/           # Document upload and storage
+├── rag/                 # RAG & vector operations
+├── ai/                  # AI/LLM integration
+├── evaluation/          # Evaluation orchestration
+├── queue/               # BullMQ configuration
+├── common/              # Shared filters and interceptors
+└── health/              # Health check endpoint
+```
+
+### Evaluation Pipeline
+
+1. **Document Upload**: PDFs are parsed and stored
+2. **Job Creation**: Evaluation job is created and queued
+3. **CV Parsing**: Extract structured data from CV
+4. **CV Evaluation**: RAG retrieval + LLM evaluation against job requirements
+5. **Project Parsing**: Extract structure from project report
+6. **Project Evaluation**: RAG retrieval + LLM evaluation against case study
+7. **Final Synthesis**: Combine results into overall summary
+8. **Result Storage**: Store complete evaluation in database
+
+### RAG Strategy
+
+- **Embeddings**: Google text-embedding-004 (768 dimensions)
+- **Vector Database**: Pinecone with namespaces for different document types
+- **Chunking**: Semantic chunking with 500-800 token chunks and 100 token overlap
+- **Retrieval**: Top-k semantic search with metadata filtering
+
+## Configuration
+
+Key environment variables:
+
+- `MONGODB_URI`: MongoDB connection string
+- `REDIS_HOST`, `REDIS_PORT`: Redis connection
+- `PINECONE_API_KEY`: Pinecone API key
+- `PINECONE_INDEX_NAME`: Pinecone index name
+- `GOOGLE_GENERATIVE_AI_API_KEY`: Google AI API key
+- `PRIMARY_MODEL`: Primary Gemini model (default: gemini-1.5-pro-latest)
+- `FAST_MODEL`: Fast Gemini model (default: gemini-1.5-flash-latest)
+- `UPLOAD_DIR`: File upload directory (default: ./uploads)
+- `MAX_FILE_SIZE`: Maximum file size in bytes (default: 10485760 = 10MB)
+- `QUEUE_CONCURRENCY`: Number of concurrent job processors (default: 5)
+
+## Testing
 
 ```bash
-# unit tests
-$ npm run test
+# Unit tests
+npm run test
 
-# e2e tests
-$ npm run test:e2e
+# E2E tests
+npm run test:e2e
 
-# test coverage
-$ npm run test:cov
+# Test coverage
+npm run test:cov
 ```
+
+## Development
+
+### Project Structure
+
+The project follows NestJS best practices with modular architecture:
+
+- **Modules**: Each feature is a self-contained module
+- **Services**: Business logic in services
+- **Controllers**: HTTP endpoints in controllers
+- **DTOs**: Data transfer objects for validation
+- **Schemas**: MongoDB schemas for data persistence
+
+### Code Patterns
+
+- **Error Handling**: Global exception filters with retry logic
+- **Validation**: DTOs with class-validator decorators
+- **Logging**: Structured logging with NestJS Logger
+- **Configuration**: Centralized config with @nestjs/config
 
 ## Deployment
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+### Production Checklist
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+- [ ] Environment variables configured
+- [ ] MongoDB connection string set
+- [ ] Redis connection configured
+- [ ] Pinecone index created and configured
+- [ ] LLM API key validated
+- [ ] System documents ingested into Pinecone
+- [ ] File upload directory created with proper permissions
+- [ ] Queue workers started
+- [ ] Health check endpoint verified
+- [ ] Logging configured
+- [ ] Error tracking configured (optional: Sentry)
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
+### Docker Deployment
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+The `docker-compose.yml` file includes MongoDB and Redis. For production, consider:
 
-## Resources
+- Using managed database services (MongoDB Atlas, Redis Cloud)
+- Setting up proper volume mounts for file storage
+- Configuring environment variables securely
+- Setting up monitoring and alerting
 
-Check out a few resources that may come in handy when working with NestJS:
+## Troubleshooting
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+### Common Issues
 
-## Support
+1. **MongoDB connection failed**
+   - Check `MONGODB_URI` in `.env`
+   - Ensure MongoDB is running: `docker-compose ps`
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+2. **Redis connection failed**
+   - Check `REDIS_HOST` and `REDIS_PORT` in `.env`
+   - Ensure Redis is running: `docker-compose ps`
 
-## Stay in touch
+3. **Pinecone errors**
+   - Verify `PINECONE_API_KEY` is set
+   - Check Pinecone index exists and dimension matches (768)
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+4. **LLM API errors**
+   - Verify `GOOGLE_GENERATIVE_AI_API_KEY` is set
+   - Check API rate limits and quotas
+   - Review error logs for specific error messages
+
+5. **File upload fails**
+   - Ensure `UPLOAD_DIR` exists and is writable
+   - Check `MAX_FILE_SIZE` setting
+   - Verify PDF files are valid and text-based
 
 ## License
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+MIT
+
+## Support
+
+For issues and questions, please open an issue on the repository.
