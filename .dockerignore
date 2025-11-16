@@ -2,7 +2,7 @@
 node_modules
 npm-debug.log
 yarn-error.log
-package-lock.json
+# package-lock.json  <- Pastikan ini dikomentar (sudah benar)
 yarn.lock
 
 # Build output
@@ -57,9 +57,9 @@ uploads/*
 secret
 *.json
 !package.json
+!package-lock.json  # <- TAMBAHKAN BARIS INI!
 !tsconfig*.json
 !nest-cli.json
 
 # Grounded knowledge (if needed, mount as volume)
 grounded_knowledge
-
