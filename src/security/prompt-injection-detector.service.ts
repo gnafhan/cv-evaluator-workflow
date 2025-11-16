@@ -69,18 +69,45 @@ export class PromptInjectionDetectorService {
       }>('app');
       const modelName = config?.googleAI?.fastModel || 'gemini-1.5-flash-latest';
 
-      // Generate structured output
-      const result = await generateObject({
-        model: google(modelName),
-        system: INJECTION_DETECTION_SYSTEM_PROMPT,
-        prompt: userPrompt,
-        schema: injectionDetectionSchema,
-        temperature: 0.2, // Lower temperature for more consistent detection
-        maxOutputTokens: 1000,
-      });
+      // Generate structured output with retry logic
+      let result;
+      let attempts = 0;
+      const maxAttempts = 3;
+      let lastError: any;
 
-      if (!result.object) {
-        throw new Error('AI did not return detection result');
+      while (attempts < maxAttempts) {
+        try {
+          attempts++;
+          result = await generateObject({
+            model: google(modelName),
+            system: INJECTION_DETECTION_SYSTEM_PROMPT,
+            prompt: userPrompt,
+            schema: injectionDetectionSchema,
+            temperature: 0.2 + (attempts - 1) * 0.1, // Slightly increase temperature on retry: 0.2, 0.3, 0.4
+            maxOutputTokens: 4000, // Increased from 1000 to allow more detailed responses
+          });
+
+          if (result && result.object) {
+            break; // Success, exit retry loop
+          } else {
+            throw new Error('No object generated in response');
+          }
+        } catch (error: any) {
+          lastError = error;
+          if (attempts >= maxAttempts) {
+            break; // Max attempts reached, will throw later
+          }
+          this.logger.warn(`Prompt injection detection attempt ${attempts}/${maxAttempts} failed, retrying...`, {
+            error: error.message || error,
+            context,
+          });
+          // Wait a bit before retry with exponential backoff
+          await new Promise(resolve => setTimeout(resolve, 500 * attempts));
+        }
+      }
+
+      if (!result || !result.object) {
+        throw lastError || new Error('AI did not return detection result after retries');
       }
 
       const detection = result.object;
@@ -122,15 +149,17 @@ export class PromptInjectionDetectorService {
     } catch (error: any) {
       // If AI call fails, skip detection and continue processing
       this.logger.warn('AI-based prompt injection detection failed, skipping check', {
-        error: error.message,
+        error: error.message || error,
+        errorStack: error.stack,
         context,
       });
 
+      // Return safe default (no detection, continue processing)
       return {
         detected: false,
         severity: 'low',
         confidence: 0,
-        reason: 'AI detection failed',
+        reason: `AI detection failed: ${error.message || 'Unknown error'}`,
         patterns: [],
         suspiciousSections: [],
       };
