@@ -2,6 +2,7 @@ import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Logger } from '@nestjs/common';
 import { EvaluationService } from '../evaluation.service';
+import { ResultMapperHelper } from '../helpers/result-mapper.helper';
 
 export interface EvaluationJobData {
   job_id: string;
@@ -77,16 +78,12 @@ export class EvaluationProcessor extends WorkerHost {
       );
       await this.evaluationService.updateJobProgress(job_id, 95, 'completing');
 
-      // Combine results
-      const result = {
-        cv_match_rate: cvResult.cv_match_rate,
-        cv_feedback: cvResult.cv_feedback,
-        cv_scoring_breakdown: cvResult.cv_scoring_breakdown,
-        project_score: projectResult.project_score,
-        project_feedback: projectResult.project_feedback,
-        project_scoring_breakdown: projectResult.project_scoring_breakdown,
-        overall_summary: overallSummary,
-      };
+      // Combine results using helper
+      const result = ResultMapperHelper.mapToEvaluationResult(
+        cvResult,
+        projectResult,
+        overallSummary,
+      );
 
       // Complete job
       await this.evaluationService.completeJob(job_id, result);

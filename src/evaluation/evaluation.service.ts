@@ -11,6 +11,7 @@ import { RagService } from '../rag/rag.service';
 import { AIService } from '../ai/ai.service';
 import { ModelArmorService } from '../security/model-armor.service';
 import { PromptInjectionDetectorService } from '../security/prompt-injection-detector.service';
+import { InjectionDetectionHelper } from './helpers/injection-detection.helper';
 import {
   CV_EVALUATION_SYSTEM_PROMPT,
   CV_EVALUATION_USER_PROMPT,
@@ -136,17 +137,8 @@ export class EvaluationService {
         reason: injectionDetection.reason.substring(0, 100),
       });
 
-      // CV: Block if critical/high severity OR confidence >= 0.3 (more sensitive)
-      const shouldBlock =
-        injectionDetection.severity === 'critical' ||
-        injectionDetection.severity === 'high' ||
-        injectionDetection.confidence >= 0.3;
-
-      if (shouldBlock) {
-        throw new BadRequestException(
-          `CV contains prohibited manipulation attempts (${injectionDetection.severity} severity, confidence: ${injectionDetection.confidence.toFixed(2)}): ${injectionDetection.reason.substring(0, 100)}`,
-        );
-      }
+      // Handle blocking logic using helper
+      InjectionDetectionHelper.handleCVDetection(injectionDetection);
 
       // Log warning for detected but below threshold
       if (injectionDetection.confidence < 0.3) {
@@ -182,9 +174,15 @@ Extract the candidate's name, work experience, skills, education, and achievemen
         structurePrompt,
       );
       
+      // Map structured CV to expected format
       return {
         name: structured.name || undefined,
-        experience: structured.experience || [],
+        experience: (structured.experience || []).map((exp) => ({
+          company: exp.company,
+          role: exp.title, // Map title to role
+          duration: exp.duration || '',
+          responsibilities: exp.description ? [exp.description] : [],
+        })),
         skills: structured.skills || [],
         education: (structured.education || []).map((edu) => ({
           degree: edu.degree,
@@ -351,15 +349,8 @@ Extract the candidate's name, work experience, skills, education, and achievemen
         reason: injectionDetection.reason.substring(0, 100),
       });
 
-      // Project: Block only if critical severity OR confidence >= 0.6 (more tolerant)
-      const shouldBlock =
-        injectionDetection.severity === 'critical' || injectionDetection.confidence >= 0.6;
-
-      if (shouldBlock) {
-        throw new BadRequestException(
-          `Project report contains prohibited manipulation attempts (${injectionDetection.severity} severity, confidence: ${injectionDetection.confidence.toFixed(2)}): ${injectionDetection.reason.substring(0, 100)}`,
-        );
-      }
+      // Handle blocking logic using helper
+      InjectionDetectionHelper.handleProjectDetection(injectionDetection);
 
       // Log warning for detected but below threshold
       if (injectionDetection.severity === 'high' && injectionDetection.confidence < 0.6) {
@@ -482,7 +473,7 @@ Extract information about the project structure, implementation details, and doc
       evaluation.creativity.score * weights.creativity;
 
     return {
-      project_score: project_score / 5, // Normalize to 0-1, then scale to 0-5
+      project_score: project_score, // Normalize to 0-1, then scale to 0-5
       project_feedback: evaluation.overall_feedback,
       project_recommendation: evaluation.project_recommendation,
       project_scoring_breakdown: {

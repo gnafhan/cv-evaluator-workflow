@@ -2,9 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { generateText, generateObject } from 'ai';
 import { google } from '@ai-sdk/google';
-import { z } from 'zod';
 import { GenerateOptions, CVEvaluationOutput, ProjectEvaluationOutput } from './types/evaluation.types';
 import { ResponseValidator, ValidationError } from './validators/response.validator';
+import { cvEvaluationSchema } from './schemas/cv-evaluation.schema';
+import { projectEvaluationSchema } from './schemas/project-evaluation.schema';
+import { cvStructureSchema } from './schemas/cv-structure.schema';
+import { projectStructureSchema } from './schemas/project-structure.schema';
+import { StructuredOutputHelper } from './helpers/structured-output.helper';
 
 @Injectable()
 export class AIService {
@@ -130,71 +134,20 @@ export class AIService {
     systemPrompt: string,
     userPrompt: string,
   ): Promise<CVEvaluationOutput> {
-    // Define Zod schema for structured output
-    const cvEvaluationSchema = z.object({
-      technical_skills_match: z.object({
-        score: z.number().int().min(1).max(5),
-        reasoning: z.string().min(50),
-      }),
-      experience_level: z.object({
-        score: z.number().int().min(1).max(5),
-        reasoning: z.string().min(50),
-      }),
-      relevant_achievements: z.object({
-        score: z.number().int().min(1).max(5),
-        reasoning: z.string().min(50),
-      }),
-      cultural_fit: z.object({
-        score: z.number().int().min(1).max(5),
-        reasoning: z.string().min(50),
-      }),
-      overall_feedback: z.string().min(50),
-      cv_recommendation: z.string().min(100),
-    });
-
     return this.callWithRetry(
       async () => {
-        const modelName = this.primaryModel;
-        
-        try {
-          const result = await generateObject({
-            model: google(modelName),
-            system: systemPrompt,
-            prompt: userPrompt,
-            schema: cvEvaluationSchema,
-            temperature: 0.3,
-            maxOutputTokens: 5000, // Increased for recommendation field
-          });
+        const result = await StructuredOutputHelper.generateWithFallback({
+          model: google(this.primaryModel),
+          systemPrompt,
+          userPrompt,
+          schema: cvEvaluationSchema,
+          primaryModel: google(this.primaryModel),
+          fastModel: google(this.fastModel),
+          logger: this.logger,
+          maxOutputTokens: 5000,
+        });
 
-          if (!result.object) {
-            throw new Error('Model returned empty response');
-          }
-
-          // The result.object is already validated and typed
-          return this.validator.validateCVEvaluation(result.object);
-        } catch (error: any) {
-          // If structured output fails, try with a simpler approach
-          if (error.message?.includes('No object generated') || error.message?.includes('did not return')) {
-            this.logger.warn('Structured output failed, trying with higher temperature and different model');
-            
-            // Fallback: Try with flash model and higher temperature
-            const fallbackResult = await generateObject({
-              model: google(this.fastModel),
-              system: systemPrompt,
-              prompt: userPrompt,
-              schema: cvEvaluationSchema,
-              temperature: 0.5, // Higher temperature for more creativity
-              maxOutputTokens: 5000, // Increased for recommendation field
-            });
-
-            if (!fallbackResult.object) {
-              throw new Error('Fallback model also returned empty response');
-            }
-
-            return this.validator.validateCVEvaluation(fallbackResult.object);
-          }
-          throw error;
-        }
+        return this.validator.validateCVEvaluation(result);
       },
       3, // maxRetries
     );
@@ -204,75 +157,20 @@ export class AIService {
     systemPrompt: string,
     userPrompt: string,
   ): Promise<ProjectEvaluationOutput> {
-    // Define Zod schema for structured output
-    const projectEvaluationSchema = z.object({
-      correctness: z.object({
-        score: z.number().int().min(1).max(5),
-        reasoning: z.string().min(50),
-      }),
-      code_quality: z.object({
-        score: z.number().int().min(1).max(5),
-        reasoning: z.string().min(50),
-      }),
-      resilience: z.object({
-        score: z.number().int().min(1).max(5),
-        reasoning: z.string().min(50),
-      }),
-      documentation: z.object({
-        score: z.number().int().min(1).max(5),
-        reasoning: z.string().min(50),
-      }),
-      creativity: z.object({
-        score: z.number().int().min(1).max(5),
-        reasoning: z.string().min(50),
-      }),
-      overall_feedback: z.string().min(50),
-      project_recommendation: z.string().min(100),
-    });
-
     return this.callWithRetry(
       async () => {
-        const modelName = this.primaryModel;
-        
-        try {
-          const result = await generateObject({
-            model: google(modelName),
-            system: systemPrompt,
-            prompt: userPrompt,
-            schema: projectEvaluationSchema,
-            temperature: 0.3,
-            maxOutputTokens: 5000, // Increased for recommendation field
-          });
+        const result = await StructuredOutputHelper.generateWithFallback({
+          model: google(this.primaryModel),
+          systemPrompt,
+          userPrompt,
+          schema: projectEvaluationSchema,
+          primaryModel: google(this.primaryModel),
+          fastModel: google(this.fastModel),
+          logger: this.logger,
+          maxOutputTokens: 5000,
+        });
 
-          if (!result.object) {
-            throw new Error('Model returned empty response');
-          }
-
-          // The result.object is already validated and typed
-          return this.validator.validateProjectEvaluation(result.object);
-        } catch (error: any) {
-          // If structured output fails, try with a simpler approach
-          if (error.message?.includes('No object generated') || error.message?.includes('did not return')) {
-            this.logger.warn('Structured output failed, trying with higher temperature and different model');
-            
-            // Fallback: Try with flash model and higher temperature
-            const fallbackResult = await generateObject({
-              model: google(this.fastModel),
-              system: systemPrompt,
-              prompt: userPrompt,
-              schema: projectEvaluationSchema,
-              temperature: 0.5, // Higher temperature for more creativity
-              maxOutputTokens: 5000, // Increased for recommendation field
-            });
-
-            if (!fallbackResult.object) {
-              throw new Error('Fallback model also returned empty response');
-            }
-
-            return this.validator.validateProjectEvaluation(fallbackResult.object);
-          }
-          throw error;
-        }
+        return this.validator.validateProjectEvaluation(result);
       },
       3, // maxRetries
     );
@@ -282,12 +180,12 @@ export class AIService {
     systemPrompt: string,
     userPrompt: string,
   ): Promise<{
-    name: string | null;
+    name?: string;
     experience: Array<{
+      title: string;
       company: string;
-      role: string;
-      duration: string;
-      responsibilities: string[];
+      duration?: string;
+      description?: string;
     }>;
     skills: string[];
     education: Array<{
@@ -297,68 +195,17 @@ export class AIService {
     }>;
     achievements: string[];
   }> {
-    const cvStructureSchema = z.object({
-      name: z.string().nullable(),
-      experience: z.array(
-        z.object({
-          company: z.string(),
-          role: z.string(),
-          duration: z.string(),
-          responsibilities: z.array(z.string()),
-        }),
-      ),
-      skills: z.array(z.string()),
-      education: z.array(
-        z.object({
-          degree: z.string(),
-          institution: z.string(),
-          year: z.string().nullable(),
-        }),
-      ),
-      achievements: z.array(z.string()),
-    });
-
     return this.callWithRetry(
       async () => {
-        const modelName = this.fastModel; // Use fast model for structuring
-        
-        try {
-          const result = await generateObject({
-            model: google(modelName),
-            system: systemPrompt,
-            prompt: userPrompt,
-            schema: cvStructureSchema,
-            temperature: 0.2, // Slightly higher than 0.0 for better results
-            maxOutputTokens: 4000, // Increase token limit
-          });
-
-          if (!result.object) {
-            throw new Error('Model returned empty response');
-          }
-
-          return result.object;
-        } catch (error: any) {
-          if (error.message?.includes('No object generated') || error.message?.includes('did not return')) {
-            this.logger.warn('CV structuring failed, retrying with higher temperature');
-            
-            // Retry with higher temperature
-            const retryResult = await generateObject({
-              model: google(modelName),
-              system: systemPrompt,
-              prompt: userPrompt,
-              schema: cvStructureSchema,
-              temperature: 0.3,
-              maxOutputTokens: 4000,
-            });
-
-            if (!retryResult.object) {
-              throw new Error('Retry also returned empty response');
-            }
-
-            return retryResult.object;
-          }
-          throw error;
-        }
+        return StructuredOutputHelper.generateWithRetry({
+          model: google(this.fastModel),
+          systemPrompt,
+          userPrompt,
+          schema: cvStructureSchema,
+          logger: this.logger,
+          maxOutputTokens: 4000,
+          retryTemperature: 0.3,
+        });
       },
       3, // maxRetries
     );
@@ -372,53 +219,17 @@ export class AIService {
     implementation: string;
     documentation: string;
   }> {
-    const projectStructureSchema = z.object({
-      structure: z.string(),
-      implementation: z.string(),
-      documentation: z.string(),
-    });
-
     return this.callWithRetry(
       async () => {
-        const modelName = this.fastModel; // Use fast model for structuring
-        
-        try {
-          const result = await generateObject({
-            model: google(modelName),
-            system: systemPrompt,
-            prompt: userPrompt,
-            schema: projectStructureSchema,
-            temperature: 0.2, // Slightly higher than 0.0 for better results
-            maxOutputTokens: 3000, // Increase token limit
-          });
-
-          if (!result.object) {
-            throw new Error('Model returned empty response');
-          }
-
-          return result.object;
-        } catch (error: any) {
-          if (error.message?.includes('No object generated') || error.message?.includes('did not return')) {
-            this.logger.warn('Project structuring failed, retrying with higher temperature');
-            
-            // Retry with higher temperature
-            const retryResult = await generateObject({
-              model: google(modelName),
-              system: systemPrompt,
-              prompt: userPrompt,
-              schema: projectStructureSchema,
-              temperature: 0.3,
-              maxOutputTokens: 3000,
-            });
-
-            if (!retryResult.object) {
-              throw new Error('Retry also returned empty response');
-            }
-
-            return retryResult.object;
-          }
-          throw error;
-        }
+        return StructuredOutputHelper.generateWithRetry({
+          model: google(this.fastModel),
+          systemPrompt,
+          userPrompt,
+          schema: projectStructureSchema,
+          logger: this.logger,
+          maxOutputTokens: 3000,
+          retryTemperature: 0.3,
+        });
       },
       3, // maxRetries
     );
