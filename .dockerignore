@@ -1,0 +1,65 @@
+# Dependencies
+node_modules
+npm-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock
+
+# Build output
+dist
+
+# Environment files
+.env
+.env.local
+.env.*.local
+*.env
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git
+.gitignore
+
+# Testing
+coverage
+.nyc_output
+*.test.ts
+*.spec.ts
+
+# Documentation
+*.md
+!README.md
+LAPORAN_SOLUSI.md
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# Scripts (keep only if needed, otherwise ignore)
+scripts
+!scripts/ingest-documents.ts
+
+# Uploads (will be volume mounted)
+uploads/*
+!uploads/.gitkeep
+
+# Secrets
+secret
+*.json
+!package.json
+!tsconfig*.json
+!nest-cli.json
+
+# Grounded knowledge (if needed, mount as volume)
+grounded_knowledge
+

@@ -28,13 +28,14 @@ A backend service that automates initial screening of job applications by evalua
 
 ## Prerequisites
 
-- Node.js 18+ and npm
-- Docker and Docker Compose (for MongoDB and Redis)
+- Node.js 18+ and npm (for local development)
+- Docker and Docker Compose (for production deployment)
 - MongoDB (via Docker or standalone)
 - Redis (via Docker or standalone)
 - Pinecone account and API key
 - Google Generative AI API key
 - Mistral AI API key (for OCR processing)
+- Traefik reverse proxy (for production)
 
 ## Installation
 
@@ -122,6 +123,120 @@ A backend service that automates initial screening of job applications by evalua
    ```
 
 The application will be available at `http://localhost:3000`.
+
+## Docker Deployment
+
+### Production Deployment with Traefik
+
+The service can be deployed as a Docker container and integrated with Traefik reverse proxy for production.
+
+#### Prerequisites
+
+- Docker and Docker Compose
+- Traefik reverse proxy already running
+- External network `traefik_network` created (shared with Traefik)
+
+#### Setup
+
+1. **Create external network** (if not already exists):
+   ```bash
+   docker network create traefik_network
+   ```
+
+2. **Set environment variables**:
+   Create a `.env` file in the project root with all required environment variables:
+   ```env
+   # Domain Configuration (for Traefik)
+   SUBDOMAIN=cv-corrector
+   DOMAIN_NAME=yourdomain.com
+   
+   # MongoDB
+   MONGODB_URI=mongodb://mongodb:27017/cv-evaluator
+   
+   # Redis
+   REDIS_HOST=redis
+   REDIS_PORT=6379
+   
+   # Pinecone
+   PINECONE_API_KEY=your-pinecone-api-key
+   PINECONE_INDEX_NAME=your-index-name
+   
+   # Google AI (Gemini)
+   GOOGLE_GENERATIVE_AI_API_KEY=your-google-ai-api-key
+   
+   # Mistral AI (OCR)
+   MISTRAL_API_KEY=your-mistral-api-key
+   
+   # Google Cloud Model Armor
+   MODEL_ARMOR_ENABLED=true
+   GCP_PROJECT_ID=your-gcp-project-id
+   MODEL_ARMOR_LOCATION=asia-southeast1
+   MODEL_ARMOR_TEMPLATE_ID=cv-evaluator
+   ```
+
+3. **Build and start the service**:
+   ```bash
+   docker-compose -f docker-compose.prod.yml up -d
+   ```
+
+4. **Check logs**:
+   ```bash
+   docker-compose -f docker-compose.prod.yml logs -f cv-corrector
+   ```
+
+5. **Access the service**:
+   The service will be available at `https://${SUBDOMAIN}.${DOMAIN_NAME}` (configured via Traefik).
+
+#### Docker Compose Configuration
+
+The `docker-compose.prod.yml` includes:
+
+- **cv-corrector**: Main NestJS application
+  - Multi-stage build for optimized production image
+  - Non-root user for security
+  - Health checks enabled
+  - Traefik labels for automatic SSL and routing
+
+- **mongodb**: MongoDB database
+  - Persistent volume for data
+
+- **redis**: Redis cache/queue
+  - Persistent volume for data
+
+All services are connected to the `traefik_network` external network.
+
+#### Traefik Integration
+
+The service is automatically configured with Traefik labels:
+
+- **SSL/TLS**: Automatic Let's Encrypt certificates
+- **HTTPS Redirect**: HTTP traffic automatically redirected to HTTPS
+- **Security Headers**: HSTS, XSS protection, content type sniffing protection
+- **Host-based Routing**: Routes based on `${SUBDOMAIN}.${DOMAIN_NAME}`
+
+#### Building the Docker Image
+
+To build the image manually:
+
+```bash
+docker build -t cv-corrector:latest .
+```
+
+The Dockerfile uses multi-stage build for optimization:
+- **Builder stage**: Installs all dependencies and builds the application
+- **Production stage**: Only includes production dependencies and built files
+
+#### Stopping the Service
+
+```bash
+docker-compose -f docker-compose.prod.yml down
+```
+
+To also remove volumes (⚠️ **this will delete data**):
+
+```bash
+docker-compose -f docker-compose.prod.yml down -v
+```
 
 ## API Endpoints
 
