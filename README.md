@@ -238,6 +238,51 @@ To also remove volumes (⚠️ **this will delete data**):
 docker-compose -f docker-compose.prod.yml down -v
 ```
 
+## CI/CD with GitHub Actions
+
+The repository includes GitHub Actions workflow for automated build and deployment.
+
+### Setup
+
+1. **Add GitHub Secrets**:
+   - Go to repository → Settings → Secrets and variables → Actions
+   - Add the following secrets:
+     - `SERVER_IP`: Your server IP address
+     - `USERNAME`: SSH username (e.g., `root`)
+     - `SERVER_KEY`: SSH private key for authentication
+
+2. **Generate SSH Key** (if needed):
+   ```bash
+   ssh-keygen -t ed25519 -C "github-actions" -f ~/.ssh/github_actions_deploy
+   ```
+   
+   - Copy **private key** to GitHub Secrets as `SERVER_KEY`
+   - Add **public key** to server:
+     ```bash
+     ssh-copy-id -i ~/.ssh/github_actions_deploy.pub root@your-server-ip
+     ```
+
+3. **Workflow Triggers**:
+   - Automatically runs on push to `main` branch
+   - Can be manually triggered from Actions tab
+
+### What the Workflow Does
+
+1. **Build Job**:
+   - Installs dependencies
+   - Runs linter
+   - Builds application
+   - Verifies build output
+
+2. **Deploy Job**:
+   - Connects to server via SSH
+   - Pulls latest code from `main` branch
+   - Rebuilds Docker image
+   - Restarts services
+   - Verifies deployment
+
+See `.github/workflows/README.md` for detailed setup instructions.
+
 ## API Endpoints
 
 ### POST /upload
