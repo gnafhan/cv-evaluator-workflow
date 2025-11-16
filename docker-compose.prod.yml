@@ -1,0 +1,107 @@
+version: '3.8'
+
+services:
+  cv-corrector:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    image: cv-corrector:latest
+    container_name: cv-corrector
+    restart: always
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      # MongoDB
+      - MONGODB_URI=${MONGODB_URI:-mongodb://mongodb:27017/cv-evaluator}
+      # Redis
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      # Pinecone
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - PINECONE_INDEX_NAME=${PINECONE_INDEX_NAME}
+      # Google AI
+      - GOOGLE_GENERATIVE_AI_API_KEY=${GOOGLE_GENERATIVE_AI_API_KEY}
+      - GOOGLE_AI_PRIMARY_MODEL=${GOOGLE_AI_PRIMARY_MODEL:-gemini-1.5-pro-latest}
+      - GOOGLE_AI_FAST_MODEL=${GOOGLE_AI_FAST_MODEL:-gemini-1.5-flash-latest}
+      # Mistral AI
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY}
+      - MISTRAL_OCR_MODEL=${MISTRAL_OCR_MODEL:-mistral-ocr-latest}
+      # Model Armor
+      - MODEL_ARMOR_ENABLED=${MODEL_ARMOR_ENABLED:-false}
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID}
+      - MODEL_ARMOR_LOCATION=${MODEL_ARMOR_LOCATION:-asia-southeast1}
+      - MODEL_ARMOR_TEMPLATE_ID=${MODEL_ARMOR_TEMPLATE_ID:-cv-evaluator}
+      # GCP Service Account (if using file-based auth)
+      - GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS:-/app/secret/gcp-service-account.json}
+    volumes:
+      - ./uploads:/app/uploads
+      - ./secret:/app/secret:ro
+      - ./grounded_knowledge:/app/grounded_knowledge:ro
+    labels:
+      # Traefik configuration
+      - traefik.enable=true
+      - traefik.http.routers.cv-corrector.rule=Host(`${SUBDOMAIN}.${DOMAIN_NAME}`)
+      - traefik.http.routers.cv-corrector.tls=true
+      - traefik.http.routers.cv-corrector.entrypoints=web,websecure
+      - traefik.http.routers.cv-corrector.tls.certresolver=mytlschallenge
+      # Security headers middleware
+      - traefik.http.middlewares.cv-corrector-headers.headers.SSLRedirect=true
+      - traefik.http.middlewares.cv-corrector-headers.headers.STSSeconds=315360000
+      - traefik.http.middlewares.cv-corrector-headers.headers.browserXSSFilter=true
+      - traefik.http.middlewares.cv-corrector-headers.headers.contentTypeNosniff=true
+      - traefik.http.middlewares.cv-corrector-headers.headers.forceSTSHeader=true
+      - traefik.http.middlewares.cv-corrector-headers.headers.SSLHost=${DOMAIN_NAME}
+      - traefik.http.middlewares.cv-corrector-headers.headers.STSIncludeSubdomains=true
+      - traefik.http.middlewares.cv-corrector-headers.headers.STSPreload=true
+      # Apply middleware to router
+      - traefik.http.routers.cv-corrector.middlewares=cv-corrector-headers@docker
+      # Service configuration
+      - traefik.http.services.cv-corrector.loadbalancer.server.port=3000
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - traefik_network
+
+  mongodb:
+    image: mongo:7.0
+    container_name: cv-corrector-mongodb
+    restart: always
+    environment:
+      MONGO_INITDB_DATABASE: cv-evaluator
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - traefik_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: cv-corrector-redis
+    restart: always
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - traefik_network
+
+volumes:
+  mongodb_data:
+    name: cv-corrector_mongodb_data
+  redis_data:
+    name: cv-corrector_redis_data
+
+networks:
+  traefik_network:
+    name: traefik_network
+    external: true
+
